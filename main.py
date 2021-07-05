@@ -1,6 +1,12 @@
+from datetime import datetime as DateTime
 import requests
 
+# ACCESS_TOKEN = 'ACCESS TOKEN HERE!'
 ACCESS_TOKEN = 'ACCESS TOKEN HERE!'
+
+def datetime_to_unix(datetime):
+  """Retorna una cadena de timestamp UNIX a partir de un objeto de fecha y hora."""
+  return datetime.strftime('%s')
 
 class FBGraphAPI:
   """Establece la comunicación al API de Facebook."""
@@ -40,15 +46,21 @@ class FBFanPageManager():
     self.page_id = page_id
     self.fb_graph_api = FBGraphAPI(access_token)
 
-  def get_posts(self):
+  def __serialize_params(self, params_dict):
+    """Retorna los parámetros serializados para ser usados en una URL."""
+    return ''.join([f'{param_name}={params_dict.get(param_name)}&' for param_name in params_dict.keys()])
+
+  def get_posts(self, **kwargs):
     """Retorna el listado de publicaciones de la Fan Page."""
-    query_result = self.fb_graph_api.query(f'{self.page_id}/posts')
+    params = self.__serialize_params(kwargs)
+    query_result = self.fb_graph_api.query(f'{self.page_id}/posts?{params}')
     return query_result.get('data', [])
 
-  def get_post_comments(self, post_id):
+  def get_post_comments(self, post_id, **kwargs):
     """Retorna el listado de comentarios de una publicación."""
-    query_result = self.fb_graph_api.query(f'{post_id}?fields=comments')
-    return query_result.get('comments', {}).get('data', [])
+    params = self.__serialize_params(kwargs)
+    query_result = self.fb_graph_api.query(f'{post_id}?fields=comments&{params}')
+    return  query_result.get('comments', {}).get('data', [])
 
   def __collect_post_comments(self, posts):
     """
@@ -57,16 +69,18 @@ class FBFanPageManager():
     """
     import multiprocessing
     with multiprocessing.Pool(multiprocessing.cpu_count()) as process_pool:
-      comments = process_pool.map(self.get_post_comments, [post.id for post in posts])
-    return comments
+      comments = process_pool.map(self.get_post_comments, [post.get('id') for post in posts])
+    return [_comment for _comments in comments for _comment in _comments]
 
-  def get_all_post_comments(self):
+  def get_all_post_comments(self, **kwargs):
     """Retorna el listado de comentarios de todas las publicaciones de la Fan Page."""
-    posts = self.get_posts()
+    posts = self.get_posts(**kwargs)
     return self.__collect_post_comments(posts)
 
 if __name__ == '__main__':
   # ejemplo de uso
   fb_fanpage_manager = FBFanPageManager(access_token=ACCESS_TOKEN, page_id='FAN PAGE ID HERE!')
-  comments = fb_fanpage_manager.get_all_post_comments()
+  since_filter = datetime_to_unix(DateTime(2013, 4, 1, 15, 55, 54))
+  until_filter = datetime_to_unix(DateTime(2021, 7, 3, 14, 55, 53))
+  comments = fb_fanpage_manager.get_all_post_comments(since=since_filter, until=until_filter)
   print(comments)
